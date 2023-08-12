@@ -9,20 +9,28 @@ set -eu -o pipefail
 RELEASE_VERSION=release-a7
 
 function sanity_checks() {
+    # Brew env
     if brew ls | grep gettext >/dev/null; then
-        echo "Won't proceed since we found a 'gettext' in 'brew ls'. This is known to cause issues in"
-        echo "the build. First remove gettext from brew and then retry."
+        echo "Won't proceed since we found a 'gettext' in 'brew ls'. This is known to cause"
+        echo "issues in the build. Uninstall the brew gettext library by running:"
+        echo ""
+        echo "'brew rm --ignore-dependencies gettext'"
         exit 1
     fi
 
+    # Ruby env
     if [[ "$(command -v ruby)" = "/usr/bin/ruby" ]]; then
         echo "Exiting early because you've got a system Ruby selected. First select a 2.7.x ruby using"
         echo "a ruby version manager and retry."
         exit 1
     fi
+    # Old omnibus fork doesn't yet support Ruby 3.0+
+    if ! ruby --version | grep -E -q '^ruby 2\.7.*$' >/dev/null; then
+        echo "A ruby version other than 2.7 was detected. Switch first to a 2.7 Ruby version and retry."
+        exit 1
+    fi
 
-    # TODO: validate that Ruby version is 2.7
-
+    # Python env
     if ! command -v python3.9 >/dev/null; then
         echo "This script requires you have an available Python 3.9 in your PATH, but one couldn't"
         echo "be found. Exiting early."
@@ -40,6 +48,14 @@ function env_setup() {
             sudo chown "$(whoami)" "${builddir}"
         fi
     done
+
+    # git: if we had a homebrew-installed git already installed, we just broke it by uninstalling
+    #      gettext as required in the earlier step. So, we set up a shim /bin dir at the front of
+    #      PATh which points back to /usr/bin/git
+    path_shim="$(mktemp -d)"
+    mkdir "${path_shim}/bin"
+    ln -sf /usr/bin/git "${path_shim}/bin/git"
+    export PATH="${path_shim}/bin:${PATH}"
 
     # python
     python_exe="$(command -v python3.9)"
